@@ -3,36 +3,30 @@ import { ExpoConfig } from 'expo/config';
 const config: ExpoConfig = {
   name: "my-first-app",
   slug: "my-first-app",
-  scheme: "mouseLab",
-  plugins: [
-    [
-      "expo-notifications",
-      {
-        "icon": "./assets/notification-icon.png",
-        "color": "#ffffff",
-        "sounds": ["./assets/notification-sound.wav"]
-      }
-    ]
-  ],
+  version: "1.0.0",
+  orientation: "portrait",
+  icon: "./assets/icon.png",
+  userInterfaceStyle: "light",
+  scheme: "mouselab",
   extra: {
     eas: {
       projectId: "9b6e78b1-563a-4587-ab8d-b9aadfbf31df"
     }
   },
-  version: "1.0.0",
-  orientation: "portrait",
-  icon: "./assets/icon.png",
-  userInterfaceStyle: "light",
   splash: {
     image: "./assets/splash.png",
     resizeMode: "contain",
     backgroundColor: "#ffffff"
   },
+  updates: {
+    fallbackToCacheTimeout: 0
+  },
   assetBundlePatterns: [
     "**/*"
   ],
   ios: {
-    supportsTablet: true
+    supportsTablet: true,
+    bundleIdentifier: "com.nlitsakis.mouselab"
   },
   android: {
     package: "com.nlitsakis.mouselab",
@@ -42,9 +36,16 @@ const config: ExpoConfig = {
     },
     permissions: ["NOTIFICATIONS"]
   },
-  web: {
-    favicon: "./assets/icon.png"
-  }
+  plugins: [
+    [
+      "expo-notifications",
+      {
+        icon: "./assets/notification-icon.png",
+        color: "#ffffff",
+        sounds: ["./assets/notification-sound.wav"]
+      }
+    ]
+  ]
 };
 
-export default config; 
+export default config;
