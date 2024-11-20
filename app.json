@@ -15,15 +15,8 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "d4e19ef7-5743-47ad-b0c1-8c4169df23c9",
-        "build": {
-    "preview": {
-      "android": {
-        "buildType": "apk"
-                }
-              }
-            }
-         }
+        "projectId": "9b6e78b1-563a-4587-ab8d-b9aadfbf31df"
+      }
     },
     "version": "1.0.0",
     "orientation": "portrait",
