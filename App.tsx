@@ -1,5 +1,4 @@
 import { RacksProvider } from './contexts/RacksContext';
-import { CagesProvider } from './contexts/CagesContext';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NavigationContainer } from '@react-navigation/native';
 import { useEffect } from 'react';
@@ -14,7 +13,7 @@ export default function App() {
     const setupDatabase = async () => {
       try {
         console.log('Starting database setup...');
-        await database.initDatabase();
+        await database.initialize();
         console.log('Database initialized with dummy data');
       } catch (error) {
         console.error('Database setup failed:', error);
@@ -38,10 +37,8 @@ export default function App() {
   return (
     <NavigationContainer>
       <RacksProvider>
-        <CagesProvider>
           <Stack.Navigator>
           </Stack.Navigator>
-        </CagesProvider>
       </RacksProvider>
     </NavigationContainer>
   );

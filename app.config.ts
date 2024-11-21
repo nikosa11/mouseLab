@@ -34,7 +34,11 @@ const config: ExpoConfig = {
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#ffffff"
     },
-    permissions: ["NOTIFICATIONS"]
+    permissions: [
+      "NOTIFICATIONS",
+      "READ_EXTERNAL_STORAGE",
+      "WRITE_EXTERNAL_STORAGE"
+    ]
   },
   plugins: [
     [
