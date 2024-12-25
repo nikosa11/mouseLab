@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { database } from '../../services/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface ProfileData {
   name: string;
@@ -32,10 +33,24 @@ export default function ProfileScreen() {
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [isNotificationModalVisible, setIsNotificationModalVisible] = useState(false);
+  const [notificationTime, setNotificationTime] = useState(new Date());
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   useEffect(() => {
     loadProfileData();
     loadStats();
+    const loadNotificationTime = async () => {
+      try {
+        const savedTime = await AsyncStorage.getItem('notificationTime');
+        if (savedTime) {
+          setNotificationTime(new Date(savedTime));
+        }
+      } catch (error) {
+        console.error('Error loading notification time:', error);
+      }
+    };
+    loadNotificationTime();
   }, []);
 
   const loadProfileData = async () => {
@@ -91,6 +106,21 @@ export default function ProfileScreen() {
     setIsEditModalVisible(true);
   };
 
+  const handleNotificationTimeChange = async (event, selectedTime) => {
+    setShowTimePicker(false);
+    if (selectedTime) {
+      setNotificationTime(selectedTime);
+      try {
+        await AsyncStorage.setItem('notificationTime', selectedTime.toISOString());
+        Alert.alert('Επιτυχία', 'Η ώρα ειδοποιήσεων ενημερώθηκε');
+        setIsNotificationModalVisible(false);
+      } catch (error) {
+        console.error('Error saving notification time:', error);
+        Alert.alert('Σφάλμα', 'Δεν ήταν δυνατή η αποθήκευση της ώρας');
+      }
+    }
+  };
+
   const menuItems = [
     {
       icon: 'person-outline',
@@ -102,7 +132,7 @@ export default function ProfileScreen() {
       icon: 'notifications-outline',
       title: 'Ειδοποιήσεις',
       description: 'Ρυθμίσεις ειδοποιήσεων',
-      onPress: () => router.push('/calendar')
+      onPress: () => setIsNotificationModalVisible(true)
     },
     {
       icon: 'bar-chart-outline',
@@ -198,6 +228,46 @@ export default function ProfileScreen() {
                 onPress={handleSaveProfile}
               >
                 <Text style={styles.buttonText}>Αποθήκευση</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isNotificationModalVisible}
+        transparent={true}
+        animationType="slide"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Ρύθμιση Ώρας Ειδοποιήσεων</Text>
+            
+            <TouchableOpacity
+              style={styles.timeButton}
+              onPress={() => setShowTimePicker(true)}
+            >
+              <Text style={styles.timeButtonText}>
+                {notificationTime.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            </TouchableOpacity>
+
+            {showTimePicker && (
+              <DateTimePicker
+                value={notificationTime}
+                mode="time"
+                is24Hour={true}
+                display="default"
+                onChange={handleNotificationTimeChange}
+              />
+            )}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setIsNotificationModalVisible(false)}
+              >
+                <Text style={styles.buttonText}>Ακύρωση</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -313,16 +383,15 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 20,
     padding: 20,
     width: '80%',
-    maxWidth: 400,
+    alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
+    marginBottom: 20,
   },
   input: {
     borderWidth: 1,
@@ -334,23 +403,35 @@ const styles = StyleSheet.create({
   },
   modalButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    width: '100%',
   },
   modalButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    marginHorizontal: 5,
+    padding: 15,
+    borderRadius: 10,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#ef4444',
   },
   confirmButton: {
     backgroundColor: '#51cf66',
   },
-  cancelButton: {
-    backgroundColor: '#ff6b6b',
-  },
   buttonText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: 'bold',
   },
-}); 
+  timeButton: {
+    backgroundColor: '#818cf8',
+    padding: 15,
+    borderRadius: 10,
+    marginVertical: 20,
+  },
+  timeButtonText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+});

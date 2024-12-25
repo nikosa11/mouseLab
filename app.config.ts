@@ -1,11 +1,11 @@
 import { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
-  name: "my-first-app",
+  name: "Mouse Lab",
   slug: "my-first-app",
-  version: "1.0.0",
+  version: "1.0.7",
   orientation: "portrait",
-  icon: "./assets/icon.png",
+  icon: "./assets/images/mouseimage.jpg",
   userInterfaceStyle: "light",
   scheme: "mouselab",
   extra: {
@@ -13,8 +13,11 @@ const config: ExpoConfig = {
       projectId: "9b6e78b1-563a-4587-ab8d-b9aadfbf31df"
     }
   },
+  cli: {
+    appVersionSource: "remote"
+  },
   splash: {
-    image: "./assets/splash.png",
+    image: "./assets/images/mouseimage.jpg",
     resizeMode: "contain",
     backgroundColor: "#ffffff"
   },
@@ -31,20 +34,30 @@ const config: ExpoConfig = {
   android: {
     package: "com.nlitsakis.mouselab",
     adaptiveIcon: {
-      foregroundImage: "./assets/adaptive-icon.png",
+      foregroundImage: "./assets/images/mouseimage.jpg",
       backgroundColor: "#ffffff"
     },
     permissions: [
       "NOTIFICATIONS",
-      "READ_EXTERNAL_STORAGE",
-      "WRITE_EXTERNAL_STORAGE"
+      "WAKE_LOCK"
     ]
+  },
+  notification: {
+    icon: "./assets/images/mouseimage.jpg",
+    color: "#ffffff",
+    androidMode: "default",
+    androidCollapsedTitle: "Mouse Lab",
+    iosDisplayInForeground: true,
   },
   plugins: [
     [
-      "expo-notifications"
+      "expo-notifications",
+      {
+        "icon": "./assets/images/mouseimage.jpg",
+        "color": "#ffffff"
+      }
     ]
-  ]
+  ],
 };
 
 export default config;

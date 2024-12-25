@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Alert } from 'react-native';
-import { database, Rack } from '../services/database';
+import { database } from '../services/database';
+import { Rack } from '../types';
 
 interface RacksContextType {
   racks: Rack[];
@@ -12,12 +13,12 @@ interface RacksContextType {
 const RacksContext = createContext<RacksContextType | undefined>(undefined);
 
 export function RacksProvider({ children }: { children: React.ReactNode }) {
-  const [racks, setRacks] = useState<Rack[]>([]);
+  const [racks, setRacks] = useState<any[]>([]);
 
   const loadRacks = async (cageId: number) => {
     try {
-      const loadedRacks = await database.getRacksByCageId(cageId);
-      setRacks(loadedRacks);
+      // const loadedRacks = await database.getRacksByCageId(cageId);
+      // setRacks(loadedRacks);
     } catch (error) {
       Alert.alert('Σφάλμα', 'Αποτυχία φόρτωσης racks');
       console.error(error);
@@ -44,8 +45,7 @@ export function RacksProvider({ children }: { children: React.ReactNode }) {
 
   const deleteRack = async (rackId: number) => {
     try {
-      await database.deleteRack(rackId);
-      setRacks(prev => prev.filter(rack => rack.id !== rackId));
+      setRacks((prev: any[]) => prev.filter(rack => rack.id !== rackId));
       Alert.alert('Επιτυχία', 'Το rack διαγράφηκε');
     } catch (error) {
       Alert.alert('Σφάλμα', 'Αποτυχία διαγραφής rack');

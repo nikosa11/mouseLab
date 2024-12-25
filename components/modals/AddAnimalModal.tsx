@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Animal, CageType, EventType } from '../../types';
-import { addDays, format } from 'date-fns';
-import DateTimePicker from '@react-native-community/datetimepicker';
+// import { addDays, format } from 'date-fns';
+// import DateTimePicker from '@react-native-community/datetimepicker';
 import { database } from '../../services/database';
 
 interface AddAnimalModalProps {
@@ -11,7 +11,7 @@ interface AddAnimalModalProps {
   onClose: () => void;
   onAdd: (data: any) => Promise<void>;
   cageNumber: number;
-  rackId: string;
+  rackId: any;
   cageId: string;
   onUpdate: () => Promise<void>;
 }
@@ -25,7 +25,7 @@ export default function AddAnimalModal({ visible, onClose, onAdd, cageNumber, ra
     status: 'active',
   });
   
-  const [selectedType, setSelectedType] = useState<CageType>('breeding');
+  const [selectedType, setSelectedType] = useState<CageType>('expected_pregnancy');
   const [eventDays, setEventDays] = useState(21); // Default για breeding
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [cageName, setCageName] = useState('');
@@ -144,7 +144,7 @@ export default function AddAnimalModal({ visible, onClose, onAdd, cageNumber, ra
           >
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Στοιχεία Ζώου</Text>
-              <View style={styles.inputContainer}>
+              <View>
                 <Text style={styles.label}>Είδος</Text>
                 <TextInput
                   style={styles.input}
@@ -154,7 +154,7 @@ export default function AddAnimalModal({ visible, onClose, onAdd, cageNumber, ra
                 />
               </View>
 
-              <View style={styles.inputContainer}>
+              <View >
                 <Text style={styles.label}>Φυλή</Text>
                 <TextInput
                   style={styles.input}
@@ -164,7 +164,7 @@ export default function AddAnimalModal({ visible, onClose, onAdd, cageNumber, ra
                 />
               </View>
 
-              <View style={styles.inputContainer}>
+              <View>
                 <Text style={styles.label}>Φύλο</Text>
                 <Picker
                   selectedValue={newAnimal.sex}
@@ -178,7 +178,7 @@ export default function AddAnimalModal({ visible, onClose, onAdd, cageNumber, ra
                 </Picker>
               </View>
 
-              <View style={styles.inputContainer}>
+              <View >
                 <Text style={styles.label}>Ημερομηνία Γέννησης</Text>
                 
                 <View style={styles.dateControlContainer}>
@@ -233,7 +233,7 @@ export default function AddAnimalModal({ visible, onClose, onAdd, cageNumber, ra
               <Text style={styles.sectionTitle}>Στοιχεία Κλουβιού</Text>
           
               <View style={styles.typeButtons}>
-                {['breeding', 'expected_pregnancy', 'weaning', 'maintenance'].map((type) => (
+                {['expected_pregnancy', 'breeding', 'weaning', 'maintenance'].map((type) => (
                   <TouchableOpacity 
                     key={type}
                     style={[
@@ -246,8 +246,8 @@ export default function AddAnimalModal({ visible, onClose, onAdd, cageNumber, ra
                       styles.typeButtonText,
                       selectedType === type && styles.selectedTypeButtonText
                     ]}>
-                      {type === 'breeding' ? 'Γέννα' :
-                       type === 'expected_pregnancy' ? 'Αναμονή' :
+                      {type === 'expected_pregnancy' ? 'Προγραμματισμένη Γέννα' :
+                      type === 'breeding' ? 'Ώρα για ζευγάρωμα' :
                        type === 'weaning' ? 'Απογαλακτισμός' : 'Συντήρηση'}
                     </Text>
                   </TouchableOpacity>

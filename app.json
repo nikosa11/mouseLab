@@ -1,15 +1,24 @@
 {
   "expo": {
-    "name": "my-first-app",
+    "name": "Mouse Lab",
     "slug": "my-first-app",
-    "scheme": "mouseLab",
+    "scheme": "mouselab",
     "plugins": [
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
-          "color": "#ffffff",
-          "sounds": ["./assets/notification-sound.wav"]
+          "icon": "./assets/images/mouseimage.jpg",
+          "color": "#ffffff"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "buildToolsVersion": "34.0.0"
+          }
         }
       ]
     ],
@@ -18,14 +27,20 @@
         "projectId": "9b6e78b1-563a-4587-ab8d-b9aadfbf31df"
       }
     },
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/mouseimage.jpg",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/images/mouseimage.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
+    },
+    "notification": {
+      "icon": "./assets/images/mouseimage.jpg",
+      "color": "#ffffff",
+      "androidMode": "default",
+      "androidCollapsedTitle": "mouselab"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -35,14 +50,23 @@
     },
     "android": {
       "package": "com.nlitsakis.mouselab",
+      "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/mouseimage.jpg",
         "backgroundColor": "#ffffff"
       },
-      "permissions": ["NOTIFICATIONS"]
+      "permissions": [
+        "NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
     "web": {
       "favicon": "./assets/icon.png"
+    },
+    "cli": {
+      "appVersionSource": "remote"
     }
   }
 }

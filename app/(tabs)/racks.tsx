@@ -29,7 +29,7 @@ export default function RacksScreen() {
     try {
       setIsLoading(true);
       const racksData = await database.getAllRacks();
-      console.log('Loaded racks:', racksData); // Για debugging
+      // console.log('Loaded racks:', racksData); // Για debugging
       setRacks(racksData);
     } catch (error) {
       console.error('Error loading racks:', error);

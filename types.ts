@@ -10,8 +10,9 @@ export interface Cage {
   id: string;
   rackId: string;
   position: number;
+  number: number;
   capacity: number;
-  status: 'empty' | 'occupied';
+  status: any;
   type: CageType;
   notes?: string | null;
   maxEvents: number;
@@ -21,17 +22,17 @@ export interface Cage {
 
 export interface Animal {
   id: string;
-  cage_id: string | null;
+  cage_id: string ;
   species: string;
   strain: string;
   sex: 'male' | 'female';
-  birth_date: string;
-  status: 'active' | 'inactive';
+  birth_date: any;
+  status: 'active' | 'inactive'  | 'deleted';
   notes?: string | null;
 }
 
 export type EventType = 'general' | 'breeding' | 'medical' | 'expected_pregnancy' | 'maintenance' | 'weaning';
-export type EventStatus = 'pending' | 'success' | 'failed';
+export type EventStatus = 'pending' | 'success' | 'failed' | 'active' | 'completed';
 
 export interface EventData {
   title: string;
@@ -41,10 +42,12 @@ export interface EventData {
   status?: EventStatus;
   time?: string;
   cage_id?: number;
-  notification_date?: string | null;
+  notificationDate?: string | null;
 }
 
 export interface Event extends EventData {
+  details: any;
+  rackId: any;
   id: string;
   notificationId?: string;
   completed: boolean;

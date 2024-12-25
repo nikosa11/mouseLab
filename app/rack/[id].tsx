@@ -1,8 +1,8 @@
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, Dimensions, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, Dimensions, Platform, Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, useCallback } from 'react';
 import { database } from '../../services/database';
-import { Rack, Cage, Animal } from '../../types';
+import { Rack, Cage, Animal, CageType } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import AddAnimalModal from '../../components/modals/AddAnimalModal';
 import EditAnimalModal from '../../components/modals/EditAnimalModal';
@@ -134,6 +134,18 @@ export default function RackScreen() {
   const [showDeleteCageModal, setShowDeleteCageModal] = useState(false);
   const [selectedCageForDelete, setSelectedCageForDelete] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [showAnimation, setShowAnimation] = useState(true);
+  const [selectedGif, setSelectedGif] = useState<number>(0);
+
+  // Λίστα με τα διαθέσιμα GIFs
+  const gifs = [
+    require('../../assets/cat and mouse.gif'),
+    require('../../assets/bayron-smith-mickey-mouse.gif'),
+    require('../../assets/animated-mouse-image-0149.gif'),
+    require('../../assets/giphy.gif'),
+    require('../../assets/mouse.gif'),
+    require('../../assets/rat-eats-mm-rat.gif')
+  ];
 
   const router = useRouter();
 
@@ -147,14 +159,14 @@ export default function RackScreen() {
     try {
       console.log('Loading rack data for ID:', id);
       const rackData = await database.getRackById(id);
-      console.log('Loaded rack data:', rackData);
+      // console.log('Loaded rack data:', rackData);
 
-      console.log('Loading cages for rack');
+     // console.log('Loading cages for rack');
       const cagesData = await database.getCagesByRackId(id);
-      console.log('Loaded cages data:', cagesData);
+      // console.log('Loaded cages data:', cagesData);
 
       // Φόρτωση ζώων για κάθε κλουβί
-      console.log('Loading animals for each cage');
+     // console.log('Loading animals for each cage');
       const animalsMap: { [key: string]: Animal[] } = {};
       for (const cage of cagesData) {
         const animals = await database.getAnimalsByCageId(cage.id);
@@ -179,7 +191,16 @@ export default function RackScreen() {
   // Αρχική φόρτωση
   useEffect(() => {
     console.log('Initial load effect triggered');
+    const randomIndex = Math.floor(Math.random() * gifs.length);
+    setSelectedGif(randomIndex);
+    
     loadRackAndCages();
+    // Κρύψε το animation μετά από 2 δευτερόλεπτα
+    const timer = setTimeout(() => {
+      setShowAnimation(false);
+    }, 2000);
+
+    return () => clearTimeout(timer);
   }, [id]);
 
   // Επαναφόρτωση όταν κλείνουν τα modals
@@ -326,10 +347,9 @@ export default function RackScreen() {
     return (
       <TouchableOpacity 
         key={cage.id} 
-        style={[styles.cage, getCageStyle(cage)]}
         onPress={() => handleCagePress(cage)}
       >
-        <Text style={styles.cageText}>
+        <Text>
           {cage.notes ? cage.notes : `Θέση ${cage.position}`}
         </Text>
         {/* ... υπόλοιπα στοιχεία ... */}
@@ -388,112 +408,162 @@ export default function RackScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView>
-        {isLoading ? (
-          <ActivityIndicator size="large" color="#0000ff" style={styles.loader} />
-        ) : (
-          <>
-            <View style={styles.header}>
-              {/* <View style={styles.headerLeft}>
-                <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-                  <Ionicons name="arrow-back" size={24} color="#333" />
-                </TouchableOpacity>
-                <Text style={styles.title}>Rack {rack?.name}</Text>
-              </View> */}
-              
-              <View style={styles.headerRight}>
-                <TouchableOpacity 
-                  style={styles.addCageButton}
-                  onPress={handleAddCage}
-                >
-                  <Ionicons name="add-circle" size={24} color="#4CAF50" />
-                  <Text style={styles.addCageButtonText}>Προσθήκη Κλουβιού</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={isMobile ? styles.cagesColumnMobile : styles.cagesGridDesktop}>
-              {cages.map((cage) => {
-                if (!cage || !cage.id) {
-                  return null;
-                }
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="black" />
+        </TouchableOpacity>
+        <Text >{rack?.name || 'Φόρτωση...'}</Text>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: '#ef4444' }]}
+            onPress={async () => {
+              Alert.alert(
+                'Διαγραφή Rack',
+                'Είστε σίγουροι ότι θέλετε να διαγράψετε αυτό το rack; Θα διαγραφούν όλα τα κλουβιά, τα ζώα και τα events που σχετίζονται με αυτό.',
+                [
+                  {
+                    text: 'Ακύρωση',
+                    style: 'cancel'
+                  },
+                  {
+                    text: 'Διαγραφή',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await database.deleteRack(id);
+                        router.replace('/(tabs)/racks');
+                      } catch (error) {
+                        console.error('Error deleting rack:', error);
+                        Alert.alert('Σφάλμα', 'Δεν ήταν δυνατή η διαγραφή του rack');
+                      }
+                    }
+                  }
+                ]
+              );
+            }}
+          >
+            <Ionicons name="trash-outline" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+      {showAnimation ? (
+        <View style={styles.animationContainer}>
+          <Image
+            source={gifs[selectedGif]}
+            style={styles.animation}
+            resizeMode="contain"
+          />
+        </View>
+      ) : (
+        // Υπάρχον περιεχόμενο
+        <>
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#0000ff" />
+          ) : (
+            // ... υπόλοιπο περιεχόμενο
+            <ScrollView>
+              <View >
+                {/* <View style={styles.headerLeft}>
+                  <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                    <Ionicons name="arrow-back" size={24} color="#333" />
+                  </TouchableOpacity>
+                  <Text style={styles.title}>Rack {rack?.name}</Text>
+                </View> */}
                 
-                return (
-                  <CageItem
-                    key={cage.id}
-                    cage={cage}
-                    onPress={handleCagePress}
-                    onAddExtra={handleAddExtra}
-                    onDelete={handleDeleteCage}
-                    refreshTrigger={refreshTrigger}
-                  />
-                );
-              })}
-            </View>
-
-            {/* Modals */}
-            {selectedCage && isAddModalVisible && (
-              <AddAnimalModal
-                visible={isAddModalVisible}
-                onClose={closeAllModals}
-                onAdd={handleAddAnimal}
-                cageNumber={selectedCage?.position}
-                rackId={Number(id)}
-                cageId={selectedCage.id}
-                onUpdate={loadRackAndCages}
-              />
-            )}
-
-            {selectedCage && isEditModalVisible && (
-              <EditAnimalModal
-                visible={isEditModalVisible}
-                cage={selectedCage}
-                onClose={() => setIsEditModalVisible(false)}
-                onUpdate={() => loadRackAndCages()}
-                selectedAnimals={selectedAnimals}
-                mode={modalMode}
-              />
-            )}
-
-            {showDeleteCageModal && (
-              <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                  <View style={styles.modalHeader}>
-                    <Ionicons name="warning" size={32} color="#dc3545" />
-                    <Text style={styles.modalTitle}>Διαγραφή Κλουβιού</Text>
-                  </View>
-                  <Text style={styles.modalText}>
-                    Είστε σίγουροι ότι θέλετε να διαγράψετε αυτό το κλουβί; {'\n\n'}
-                    Η ενέργεια αυτή θα διαγράψει μόνιμα:
-                    {'\n'} • Όλα τα ζώα του κλουβιού
-                    {'\n'} • Όλα τα events
-                  </Text>
-                  <View style={styles.modalButtons}>
-                    <TouchableOpacity 
-                      style={[styles.modalButton, styles.cancelButton]}
-                      onPress={() => setShowDeleteCageModal(false)}
-                    >
-                      <Ionicons name="close" size={18} color="#fff" />
-                      <Text style={styles.buttonText}>Άκυρο</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.modalButton, styles.modalDeleteButton]}
-                      onPress={() => {
-                        if (selectedCageForDelete) {
-                          handleDeleteCage(selectedCageForDelete);
-                        }
-                      }}
-                    >
-                      <Ionicons name="trash-bin" size={18} color="#fff" />
-                      <Text style={styles.buttonText}>Διαγραφή</Text>
-                    </TouchableOpacity>
-                  </View>
+                <View style={styles.headerRight}>
+                  <TouchableOpacity 
+                    style={styles.addCageButton}
+                    onPress={handleAddCage}
+                  >
+                    <Ionicons name="add-circle" size={24} color="#4CAF50" />
+                    <Text style={styles.addCageButtonText}>Προσθήκη Κλουβιού</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-            )}
-          </>
-        )}
-      </ScrollView>
+
+              <View style={isMobile ? styles.cagesColumnMobile : styles.cagesGridDesktop}>
+                {cages.map((cage) => {
+                  if (!cage || !cage.id) {
+                    return null;
+                  }
+                  
+                  return (
+                    <CageItem
+                      key={cage.id}
+                      cage={cage}
+                      onPress={handleCagePress}
+                      onAddExtra={handleAddExtra}
+                      onDelete={handleDeleteCage}
+                      refreshTrigger={refreshTrigger}
+                    />
+                  );
+                })}
+              </View>
+
+              {/* Modals */}
+              {selectedCage && isAddModalVisible && (
+                <AddAnimalModal
+                  visible={isAddModalVisible}
+                  onClose={closeAllModals}
+                  onAdd={handleAddAnimal}
+                  cageNumber={selectedCage?.position}
+                  rackId={Number(id)}
+                  cageId={selectedCage.id}
+                  onUpdate={loadRackAndCages}
+                />
+              )}
+
+              {selectedCage && isEditModalVisible && (
+                <EditAnimalModal
+                  visible={isEditModalVisible}
+                  cage={selectedCage}
+                  onClose={() => setIsEditModalVisible(false)}
+                  onUpdate={() => loadRackAndCages()}
+                  mode={modalMode}
+                  selectedAnimals={selectedAnimals}
+                />
+              )}
+
+              {showDeleteCageModal && (
+                <View style={styles.modalOverlay}>
+                  <View style={styles.modalContent}>
+                    <View style={styles.modalHeader}>
+                      <Ionicons name="warning" size={32} color="#dc3545" />
+                      <Text style={styles.modalTitle}>Διαγραφή Κλουβιού</Text>
+                    </View>
+                    <Text style={styles.modalText}>
+                      Είστε σίγουροι ότι θέλετε να διαγράψετε αυτό το κλουβί; {'\n\n'}
+                      Η ενέργεια αυτή θα διαγράψει μόνιμα:
+                      {'\n'} • Όλα τα ζώα του κλουβιού
+                      {'\n'} • Όλα τα events
+                    </Text>
+                    <View style={styles.modalButtons}>
+                      <TouchableOpacity 
+                        style={[styles.modalButton, styles.cancelButton]}
+                        onPress={() => setShowDeleteCageModal(false)}
+                      >
+                        <Ionicons name="close" size={18} color="#fff" />
+                        <Text style={styles.buttonText}>Άκυρο</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.modalButton, styles.modalDeleteButton]}
+                        onPress={() => {
+                          if (selectedCageForDelete) {
+                            handleDeleteCage(selectedCageForDelete);
+                          }
+                        }}
+                      >
+                        <Ionicons name="trash-bin" size={18} color="#fff" />
+                        <Text style={styles.buttonText}>Διαγραφή</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+          )}
+        </>
+      )}
     </View>
   );
 }
@@ -530,86 +600,12 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12,
   },
-  cageNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  cageStatus: {
-    fontSize: 12,
-    color: '#666',
-    textTransform: 'capitalize',
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    textAlign: 'center',
-  },
-  cageType: {
-    fontSize: 11,
-    color: '#666',
-    marginTop: 4,
-    textTransform: 'capitalize',
-    textAlign: 'center',
-  },
-  '@media (min-width: 768px)': {
-    cageItem: {
-      width: 'calc(20% - 8px)',
-    },
-    cageNumber: {
-      fontSize: 18,
-    },
-    cageStatus: {
-      fontSize: 16,
-    },
-    cageType: {
-      fontSize: 14,
-    }
-  },
+
   // Mobile styles
   cagesColumnMobile: {
     padding: 16,
   },
-  cageItemMobile: {
-    width: '100%',
-    height: 160,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  cageNumber: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 12,
-  },
-  cageStatus: {
-    fontSize: 16,
-    color: '#666',
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 8,
-  },
-  cageType: {
-    fontSize: 14,
-    color: '#666',
-    textTransform: 'capitalize',
-  },
-
+ 
   // Desktop styles
   cagesGridDesktop: {
     flexDirection: 'row',
@@ -619,24 +615,6 @@ const styles = StyleSheet.create({
     gap: 32,
     backgroundColor: '#f8f9fa',
   },
-  cageItemDesktop: {
-    width: 'calc(20% - 32px)',
-    aspectRatio: 1,
-    backgroundColor: 'white',
-    borderRadius: 40,
-    padding: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e0e0e0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 8,
-    marginBottom: 32,
-    overflow: 'hidden',
-  },
   headerDeleteButton: {
     width: 40,
     height: 40,
@@ -645,7 +623,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalOverlay: {
-    position: 'fixed',
     top: 0,
     left: 0,
     right: 0,
@@ -710,45 +687,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
   },
-  cageContent: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  
-  addExtraButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    backgroundColor: '#e8f5e9',
-    borderRadius: 25,
-    gap: 10,
-    marginTop: 12,
-  },
-  
-  addExtraText: {
-    fontSize: 13,
-    color: '#4caf50',
-    fontWeight: '500',
-  },
-  cageActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    marginTop: 16,
-    gap: 16,
-  },
-  deleteButton: {
-    padding: 12,
-    borderRadius: 25,
-    backgroundColor: '#ffebee',
-  },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -759,51 +697,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  addCageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#e8f5e9',
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 30,
-    gap: 12,
-    shadowColor: '#4CAF50',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
   addCageButtonText: {
     color: '#4CAF50',
     fontSize: 15,
     fontWeight: '500',
   },
-  cageNumberOccupied: {
-    color: '#1b5e20',
-    fontWeight: '600',
-    backgroundColor: '#e8f5e9',
-    borderRadius: 25,
-  },
-  
-  cageStatusOccupied: {
-    color: '#2e7d32',
-    fontWeight: '500',
-    backgroundColor: '#e8f5e9',
-    borderRadius: 20,
-  },
-  
-  cageTypeOccupied: {
-    color: '#388e3c',
-    fontWeight: '500',
-    backgroundColor: '#e8f5e9',
-    borderRadius: 20,
-  },
-  
-  cageItemMobile: {
-    // ... υπάρχον στυλ ...
-  },
-  
   cageItemDesktop: {
-    width: 'calc(20% - 32px)',
     aspectRatio: 1,
     backgroundColor: 'white',
     borderRadius: 40,
@@ -821,42 +720,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   
-  cageNumber: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#424242',
-    textAlign: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    backgroundColor: '#f5f5f5',
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  
-  cageStatus: {
-    fontSize: 16,
-    color: '#757575',
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
-    marginVertical: 6,
-  },
-  
-  cageType: {
-    fontSize: 14,
-    color: '#9e9e9e',
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
-    marginTop: 6,
-  },
-  
-  // ... υπόλοιπα στυλ ...
-
-  // Container για τα κλουβιά σε mobile
   cagesGridMobile: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -868,7 +731,6 @@ const styles = StyleSheet.create({
 
   // Mobile-specific κλουβί
   cageItemMobile: {
-    width: 'calc(50% - 12px)', // 2 κλουβιά ανά σειρά με κενό
     aspectRatio: 1,
     backgroundColor: 'white',
     borderRadius: 25, // Πιο κυκλικό για mobile
@@ -1003,5 +865,39 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 15,
     backgroundColor: '#e3f2fd',
-  }
+  },
+  animationContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    zIndex: 1000,
+  },
+  animation: {
+    width: 300,
+    height: 300,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  button: {
+    padding: 12,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });

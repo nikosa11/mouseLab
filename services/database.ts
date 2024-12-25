@@ -1,12 +1,9 @@
 import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import * as SQLite from 'expo-sqlite';
-import { Animal, Event, Cage, Rack, EventData, CageType } from '../types';
+import { Animal, Event, Cage, Rack, CageType } from '../types';
 import { scheduleEventNotification } from './notifications';
-import { eventBus } from './eventBus';
 import { addDays, format } from 'date-fns';
-import { v4 as uuidv4 } from 'uuid';
 
 interface DatabaseInterface {
   getStats(): Promise<{ totalAnimals: number; activeCages: number }>;
@@ -15,38 +12,24 @@ interface DatabaseInterface {
   getAllCages(): Promise<Cage[]>;
   getAllRacks(): Promise<Rack[]>;
   addEvent(EventData: any): Promise<number>;
-  addAnimal(animal: Omit<Animal, 'id'>): Promise<Animal>;
-  addCage(cage: Omit<Cage, 'id'>): Promise<Cage>;
   addRack(rack: Omit<Rack, 'id'>): Promise<Rack>;
-  updateAnimal(id: number, animal: Partial<Animal>): Promise<void>;
+  updateAnimal(id: string, animal: Partial<Animal>): Promise<void>;
   updateCageNew(cageId: number, cageData: Partial<Cage>): Promise<void>;
   updateRack(id: number, rack: Partial<Rack>): Promise<void>;
-  deleteEvent(id: number): Promise<void>;
-  deleteAnimal(id: number): Promise<void>;
   deleteCage(id: number): Promise<void>;
-  deleteRack(id: number): Promise<void>;
-  getRackById(id: number): Promise<Rack | null>;
-  getCagesByRackId(rackId: number): Promise<Cage[]>;
-  fixDuplicateRackIds(): Promise<void>;
+  deleteRack(id: string): Promise<void>;
   getCage(id: number): Promise<Cage | null>;
-  getAnimalsByCageId(cageId: number): Promise<Animal[]>;
-  updateCage(updatedCage: Cage): Promise<void>;
   getAnimalByCageId(cageId: number): Promise<Animal | null>;
   removeAnimal(animalId: number): Promise<void>;
-  addAnimal(animalData: any): Promise<void>;
   getEventsForCage(cageId: number): Promise<Event[]>;
-  createCage(rackId: number, position: number): Promise<Cage>;
-  initializeCagesForRack(rackId: number, capacity: number): Promise<void>;
-  cleanupDuplicateCages(): Promise<void>;
-  resetDatabase(): Promise<void>;
   createCageWithEvents(rackId: number, position: number, type: CageType): Promise<Cage>;
-  updateCageType(cageId: number, newType: CageType): Promise<void>;
+  updateCageType(cageId: string, newType: CageType): Promise<void>;
   getCageEvents(cageId: number): Promise<Event[]>;
   getEventByCageId(cageId: number): Promise<Event | null>;
-  updateCage(updatedCage: Cage): Promise<void>;
   updateEvent(id: number, eventUpdate: Partial<Event>): Promise<void>;
   getAnimalCountForCage(cageId: string): Promise<number>;
   getExpiredEvents(): Promise<Event[]>;
+  getUpcomingEvents(): Promise<Event[]>;
 }
 
 function generateId(): string {
@@ -62,6 +45,73 @@ export class Database implements DatabaseInterface {
     this.initialize().catch(error => 
       console.error('Failed to initialize database:', error)
     );
+  }
+  async updateAnimal(animalId: string, updateData: Partial<Animal>): Promise<void> {
+    console.log('Updating animal:', animalId, 'with data:', updateData);
+    try {
+      const db = await this.getDB();
+      const animalIndex = db.tables.animals.findIndex(a => a.id === animalId);
+      
+      if (animalIndex === -1) {
+        throw new Error('Animal not found');
+      }
+
+      // Update the animal
+      db.tables.animals[animalIndex] = {
+        ...db.tables.animals[animalIndex],
+        ...updateData
+      };
+
+      await this.saveDB(db);
+      console.log('Animal updated successfully');
+    } catch (error) {
+      console.error('Error updating animal:', error);
+      throw error;
+    }
+  }
+  async deleteRack(rackId: string): Promise<void> {
+    console.log('=== START deleteRack ===');
+    console.log('Deleting rack:', rackId);
+    
+    try {
+      const db = await this.getDB();
+      
+      // Get all cages for this rack
+      const cages = db.tables.cages.filter(cage => cage.rackId === rackId);
+      const cageIds = cages.map(cage => cage.id);
+      
+      // Delete all animals in these cages
+      db.tables.animals = db.tables.animals.filter(animal => 
+        !cageIds.includes(animal.cage_id)
+      );
+      
+      // Delete all events for these cages
+      db.tables.events = db.tables.events.filter(event => 
+        !cageIds.includes(event.cageId)
+      );
+      
+      // Delete all cages
+      db.tables.cages = db.tables.cages.filter(cage => 
+        cage.rackId !== rackId
+      );
+      
+      // Delete the rack
+      db.tables.racks = db.tables.racks.filter(rack => 
+        rack.id !== rackId
+      );
+      
+      await this.saveDB(db);
+      console.log('Successfully deleted rack and related items');
+    } catch (error) {
+      console.error('Error deleting rack:', error);
+      throw error;
+    }
+  }
+  createCageWithEvents(rackId: number, position: number, type: CageType): Promise<Cage> {
+    throw new Error('Method not implemented.');
+  }
+  getCageEvents(cageId: number): Promise<Event[]> {
+    throw new Error('Method not implemented.');
   }
 
   public static getInstance(): Database {
@@ -190,9 +240,10 @@ export class Database implements DatabaseInterface {
           type: 'maintenance',
           animalIds: [],
           event_id: null,
-          capacity: 8,
-          maxEvents: 8,
-          notes: null
+          capacity: rack.capacity,
+          maxEvents: rack.capacity,
+          notes: null,
+          number: 0
         };
         db.tables.cages.push(newCage);
       }
@@ -259,7 +310,7 @@ export class Database implements DatabaseInterface {
       }
 
       // Ενημέρωση του cage
-      const updatedCage = {
+      const updatedCage: Cage = {
         ...data.cage,
         status: 'occupied',
         animalIds: [...(data.cage.animalIds || []), animalId]
@@ -280,6 +331,7 @@ export class Database implements DatabaseInterface {
   }
 
   async updateCageWithEvent(cageId: string, data: {
+    status: string;
     type: CageType;
     notes?: string;
     event: {
@@ -324,14 +376,19 @@ export class Database implements DatabaseInterface {
         // Δημιουργία νέου event μόνο αν δεν υπάρχει
         eventId = generateId();
         console.log('Creating new event:', eventId);
-        const newEvent = {
+        const newEvent : Event = {
           id: eventId,
           cageId,
           type: data.type,
           startDate: data.event.startDate,
           endDate: data.event.endDate,
           notificationDate: data.event.notificationDate,
-          status: 'active'
+          status: 'active',
+          completed: false,
+          title: '',
+          date: '',
+          rackId: undefined,
+          details: undefined
         };
         db.tables.events.push(newEvent);
       }
@@ -354,7 +411,7 @@ export class Database implements DatabaseInterface {
     console.log('=== END updateCageWithEvent ===');
   }
 
-  async clearCage(cageId: number): Promise<void> {
+  async clearCage(cageId: string): Promise<void> {
     try {
       const db = await this.getDB();
       const cage = db.tables.cages.find(c => c.id === cageId);
@@ -376,7 +433,7 @@ export class Database implements DatabaseInterface {
           db.tables.animals[animalIndex] = {
             ...animal,
             status: 'inactive',
-            cage_id: null
+            cage_id: ''
           };
         }
       });
@@ -403,7 +460,7 @@ export class Database implements DatabaseInterface {
       const db = await this.getDB();
       const event = {
         ...EventData,
-        id: this.getNextId('events'),
+        id: generateId(),
       };
 
       if (!db.tables.events) {
@@ -424,7 +481,7 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async updateCageWithAnimals(cageId: number, data: {
+  async updateCageWithAnimals(cageId: String, data: {
     animals: Animal[];
     eventUpdate: Partial<Event>;
     cageType: CageType;
@@ -444,10 +501,10 @@ export class Database implements DatabaseInterface {
       
       // Προσθήκη νέων animals
       data.animals.forEach(animal => {
-        const newAnimal = {
+        const newAnimal:any = {
           ...animal,
           cage_id: cageId,
-          id: animal.id || this.getNextId('animals')
+          id: animal.id || generateId()
         };
         db.tables.animals.push(newAnimal);
       });
@@ -477,7 +534,7 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async getEventById(eventId: number): Promise<Event | null> {
+  async getEventById(eventId: string): Promise<Event | null> {
     try {
       const db = await this.getDB();
       const event = db.tables.events.find(e => e.id === eventId);
@@ -494,12 +551,12 @@ export class Database implements DatabaseInterface {
       
       // Προσθήκη ζώου
       const animal = {
-        id: this.getNextId('animals'),
+        id: generateId(),
         ...animalData
       };
       db.tables.animals.push(animal);
 
-      // Δημιουργία event με βάση τον τύπο του κλουβ��ού
+      // Δημιουργία event με βάση τον τύπο του κλουβίου
       const today = new Date();
       let notificationDate = null;
       
@@ -512,20 +569,7 @@ export class Database implements DatabaseInterface {
           break;
       }
 
-      // if (notificationDate) {
-      //   const event = {
 
-      //     id: this.getNextId('events'),
-      //     cageId: animalData.cageId,
-      //     type: animalData.cageType,
-      //     startDate: format(today, 'yyyy-MM-dd'),
-      //     endDate: format(notificationDate, 'yyyy-MM-dd'),
-      //     notificationDate: format(notificationDate, 'yyyy-MM-dd'),
-      //     completed: false
-      //   };
-        
-      //   db.tables.events.push(event);
-     // }
 
       // Ενημέρωση του cage
       const cageIndex = db.tables.cages.findIndex(c => c.id === animalData.cageId);
@@ -545,7 +589,7 @@ export class Database implements DatabaseInterface {
   }
 
 
-  async updateCage(updatedCage: Cage): Promise<void> {
+  async updateCageNew1(updatedCage: Cage): Promise<void> {
     try {
       const db = await this.getDB();
       
@@ -591,7 +635,8 @@ export class Database implements DatabaseInterface {
         event_id: null,
         capacity: 8,
         maxEvents: 8,
-        notes: ''
+        notes: '',
+        number: 0
       };
 
       // Προσθήκη του νέου κλουβιού
@@ -613,11 +658,11 @@ export class Database implements DatabaseInterface {
   }
 
 
-  async updateCageNew(cageId: number, cageData: Partial<Cage>): Promise<void> {
+  async updateCageNew(cageId: any, cageData: Partial<Cage>): Promise<void> {
     return this.updateCage(cageId, cageData);
   }
 
-  async updateRack(id: number, rackUpdate: Partial<Rack>): Promise<void> {
+  async updateRack(id: any, rackUpdate: Partial<Rack>): Promise<void> {
     try {
       const db = await this.getDB();
       const index = db.tables.racks.findIndex(r => r.id === id);
@@ -634,40 +679,9 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async fixDuplicateRackIds(): Promise<void> {
-    try {
-      const db = await this.getDB();
-      const seenIds = new Set();
-      let nextId = 1;
 
-      // Διόρθωση των IDs των racks
-      db.tables.racks = db.tables.racks.map(rack => {
-        while (seenIds.has(nextId)) {
-          nextId++;
-        }
-        seenIds.add(nextId);
-        
-        return {
-          ...rack,
-          id: nextId++
-        };
-      });
 
-      // Ενημέρωση των σχετικών cages
-      db.tables.cages = db.tables.cages.map(cage => ({
-        ...cage,
-        rackId: db.tables.racks.find(r => r.name === cage.rackName)?.id || cage.rackId
-      }));
-
-      await this.saveDB(db);
-      console.log('Fixed duplicate rack IDs');
-    } catch (error) {
-      console.error('Error fixing duplicate rack IDs:', error);
-      throw error;
-    }
-  }
-
-  async getCage(id: number): Promise<Cage | null> {
+  async getCage(id: any): Promise<Cage | null> {
     try {
       const db = await this.getDB();
       return db.tables.cages.find(cage => cage.id === id) || null;
@@ -697,20 +711,20 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async getCagesByRackId(rackId: string): Promise<Cage[]> {
+
+  async getCageById(id: string): Promise<Cage | null> {
     try {
       const db = await this.getDB();
-      return db.tables.cages
-        .filter(c => c.rackId === rackId)
-        .sort((a, b) => a.position - b.position);
+      console.log('=== START getCageById ===', db.tables.animals);
+      return db.tables.cages.find(c => c.animalIds.includes(id)) || null;
     } catch (error) {
-      console.error('Error getting cages:', error);
-      return [];
+      console.error('Error getting cage:', error);
+      throw error;
     }
   }
 
   // Βοηθητική μέθοδος για να ελέγξουμε αν υπάρχει το rack
-  async checkRackExists(id: number): Promise<boolean> {
+  async checkRackExists(id: any): Promise<boolean> {
     try {
       const db = await this.getDB();
       return db.tables.racks.some(r => r.id === id);
@@ -720,24 +734,24 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async updateCage(updatedCage: Cage): Promise<void> {
-    try {
-      const db = await this.getDB();
-      const cageIndex = db.tables.cages.findIndex(c => c.id === updatedCage.id);
+  // async updateCage(updatedCage: Cage): Promise<void> {
+  //   try {
+  //     const db = await this.getDB();
+  //     const cageIndex = db.tables.cages.findIndex(c => c.id === updatedCage.id);
       
-      if (cageIndex === -1) {
-        throw new Error(`Cage with id ${updatedCage.id} not found`);
-      }
+  //     if (cageIndex === -1) {
+  //       throw new Error(`Cage with id ${updatedCage.id} not found`);
+  //     }
 
-      db.tables.cages[cageIndex] = updatedCage;
-      await this.saveDB(db);
-    } catch (error) {
-      console.error('Error updating cage:', error);
-      throw error;
-    }
-  }
+  //     db.tables.cages[cageIndex] = updatedCage;
+  //     await this.saveDB(db);
+  //   } catch (error) {
+  //     console.error('Error updating cage:', error);
+  //     throw error;
+  //   }
+  // }
 
-  async getAnimalByCageId(cageId: number): Promise<Animal | null> {
+  async getAnimalByCageId(cageId: any): Promise<Animal | null> {
     try {
       const db = await this.getDB();
       return db.tables.animals.find(animal => animal.cage_id === cageId) || null;
@@ -747,8 +761,9 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async removeAnimal(animalId: number): Promise<void> {
+  async removeAnimal(animalId: any): Promise<void> {
     try {
+      console.log('=== START removeAnimal ===', { animalId });
       const db = await this.getDB();
       db.tables.animals = db.tables.animals.filter(animal => animal.id !== animalId);
       await this.saveDB(db);
@@ -758,7 +773,7 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async getEventsForCage(cageId: number): Promise<Event[]> {
+  async getEventsForCage(cageId: any): Promise<Event[]> {
     try {
       const db = await this.getDB();
       return db.tables.events.filter(event => event.cageId === cageId);
@@ -768,29 +783,29 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async createCage(rackId: number, position: number): Promise<Cage> {
+  async createCage(rackId: string, position: number): Promise<Cage> {
     try {
       const db = await this.getDB();
       
       // Βρίσκουμε το μεγαλύτερο ID από τα υπάρχοντα cages
-      const maxId = Math.max(...db.tables.cages.map(c => c.id), 0);
       
       const newCage: Cage = {
-        id: maxId + 1, // Εξασφαλίζουμε μοναδιό ID
-        rack_id: rackId,
+        id: generateId(),
+        rackId: rackId,
         position: position,
         number: position,
         status: 'empty',
         type: 'maintenance',
-        animalId: null,
+        animalIds: [],
         capacity: 8,
         maxEvents: 8,
-        notes: null
+        notes: null,
+        event_id: null
       };
 
       // Ελέγχουμε για διπλότυπα
       const existingCage = db.tables.cages.find(
-        c => c.rack_id === rackId && c.position === position
+        c => c.rackId === rackId && c.position === position
       );
 
       if (existingCage) {
@@ -807,144 +822,14 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async initializeCagesForRack(rackId: number, capacity: number): Promise<void> {
-    try {
-      const db = await this.getDB();
-      const lastCageId = Math.max(...db.tables.cages.map(c => c.id), 0);
-      
-      const newCages = Array.from({ length: capacity }, (_, index) => ({
-        id: lastCageId + index + 1, // Μοναδικό ID για κάθε cage
-        rack_id: rackId,
-        number: index + 1,
-        position: index + 1,
-        status: 'empty' as const,
-        type: 'maintenance' as const,
-        animalId: null,
-        capacity: 8,
-        maxEvents: 8
-      }));
 
-      db.tables.cages.push(...newCages);
-      await this.saveDB(db);
-    } catch (error) {
-      console.error('Error initializing cages:', error);
-      throw error;
-    }
-  }
 
-  // Μέθοδος για να καθαρίσουμε τα διπλότυπα cages
-  async cleanupDuplicateCages(): Promise<void> {
-    try {
-      const db = await this.getDB();
-      
-      // Κρατάμε μόνο το πρώτο cage για κάθε συνδυασμό rackId και position
-      const uniqueCages = Array.from(
-        new Map(
-          db.tables.cages.map(cage => 
-            [`${cage.rack_id}-${cage.position}`, cage]
-          )
-        ).values()
-      );
 
-      // Αναθέτουμε νέα μοναδικά IDs
-      const updatedCages = uniqueCages.map((cage, index) => ({
-        ...cage,
-        id: index + 1
-      }));
 
-      db.tables.cages = updatedCages;
-      await this.saveDB(db);
-    } catch (error) {
-      console.error('Error cleaning up duplicate cages:', error);
-      throw error;
-    }
-  }
 
-  private getLastCageId(): number {
-    const db = this.getDB();
-    return Math.max(...db.tables.cages.map(c => c.id), 0);
-  }
+ 
 
-  async createRackWithCages(name: string, capacity: number): Promise<Rack> {
-    try {
-      const db = await this.getDB();
-      
-      // Δημιουργία του rack
-      const newRack: Rack = {
-        id: generateId(),
-        name,
-        position: await this.getNextPosition(),
-        capacity,
-        notes: ''
-      };
-      
-      // Υπλογισμός του startingCageId
-      const lastCageId = db.tables.cages.length > 0 
-        ? Math.max(...db.tables.cages.map(c => c.id))
-        : 0;
-      
-      // Δημιουργία των cages με διαδοχικά IDs
-      const cages = Array.from({ length: capacity }, (_, index) => ({
-        id: generateId(),
-        rackId: newRack.id,
-        position: index + 1,
-        status: 'empty' as const,
-        animalId: null,
-        type: 'maintenance' as const,
-        capacity: 8,
-        maxEvents: 8,
-        notes: null
-      }));
-
-      // Αποθήκευση ση βάση
-      db.tables.racks.push(newRack);
-      db.tables.cages.push(...cages);
-      
-      await this.saveDB(db);
-      console.log('Created rack with cages:', { rack: newRack, cages });
-      
-      return newRack;
-    } catch (error) {
-      console.error('Error creating rack with cages:', error);
-      throw error;
-    }
-  }
-
-  async resetDatabase(): Promise<void> {
-    const db = await this.getDB();
-    let currentCageId = 1;
-    
-    // Κρατάμε τα racks αλλά επαναδημιουργούμε τα cages
-    const racks = [...db.tables.racks];
-    db.tables.cages = [];
-    
-    // Δημιουργούμε νέα cages με σωστά IDs
-    for (const rack of racks) {
-      const newCages = Array.from({ length: rack.capacity }, (_, index) => ({
-        id: currentCageId + index,
-        rackId: rack.id,
-        position: index + 1,
-        status: 'empty' as const,
-        animalId: null,
-        type: 'maintenance' as const,
-        capacity: 8,
-        maxEvents: 8,
-        notes: null
-      }));
-      
-      db.tables.cages.push(...newCages);
-      currentCageId += rack.capacity;
-    }
-    
-    // Καθαρίζουμε τα σχετικά δεδομένα
-    db.tables.animals = [];
-    db.tables.events = [];
-    
-    await this.saveDB(db);
-    console.log('Database reset completed');
-  }
-
-  async updateEvent(eventId: number, eventUpdates: Partial<Event>): Promise<void> {
+  async updateEvent(eventId: any, eventUpdates: Partial<Event>): Promise<void> {
     try {
       const db = await this.getDB();
       const eventIndex = db.tables.events.findIndex(e => e.id === eventId);
@@ -993,7 +878,7 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async deleteRackWithRelations(rackId: number): Promise<void> {
+  async deleteRackWithRelations(rackId: any): Promise<void> {
     console.log('=== START deleteRackWithRelations ===');
     console.log('Deleting rack and all related data for rackId:', rackId);
 
@@ -1007,9 +892,7 @@ export class Database implements DatabaseInterface {
 
       // 2. Βρίσκουμε όλα τα animals που σχετίζονται με αυτά τα cages
       const animalsToDelete = db.tables.animals.filter(animal => 
-        cageIds.includes(animal.cage_id) || 
-        (animal.rackId === rackId)
-      );
+        cageIds.includes(animal.cage_id)       );
       const animalIds = animalsToDelete.map(animal => animal.id);
       console.log('Found animals to delete:', animalIds);
 
@@ -1022,9 +905,7 @@ export class Database implements DatabaseInterface {
       // 4. Διαγράφουμε όλα τα animals
       db.tables.animals = db.tables.animals.filter(animal => 
         !animalIds.includes(animal.id) && 
-        !cageIds.includes(animal.cage_id) && 
-        animal.rackId !== rackId
-      );
+        !cageIds.includes(animal.cage_id)       );
 
       // 5. Διαγράφουμε όλα τα cages του rack
       db.tables.cages = db.tables.cages.filter(cage => 
@@ -1046,7 +927,7 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async deleteCage(cageId: string): Promise<void> {
+  async deleteCage(cageId: any): Promise<void> {
     console.log('=== START deleteCage ===');
     try {
       const db = await this.getDB();
@@ -1107,7 +988,7 @@ export class Database implements DatabaseInterface {
   private async createTables() {
     if (Platform.OS !== 'web' && this.db) {
       await new Promise<void>((resolve, reject) => {
-        this.db.transaction(tx => {
+        this.db.transaction((tx: { executeSql: (arg0: string) => void; }) => {
           tx.executeSql(`
             CREATE TABLE IF NOT EXISTS racks (
               id TEXT PRIMARY KEY,
@@ -1136,7 +1017,7 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  private async getNextId(tableName: string): Promise<string> {
+  private async getNextId(tableName: 'racks' | 'cages' | 'animals' | 'events'): Promise<string> {
     try {
       const db = await this.getDB();
       const table = db.tables[tableName] || [];
@@ -1147,7 +1028,7 @@ export class Database implements DatabaseInterface {
       }
 
       // ρες το μεγαλύτερο ID και πρόσθεσε 1
-      const maxId = Math.max(...table.map(item => 
+      const maxId = Math.max(...table.map((item: { id: string; }) => 
         typeof item.id === 'string' ? parseInt(item.id) : item.id
       ));
       
@@ -1158,28 +1039,24 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async addAnimal(animal: Omit<Animal, 'id'>): Promise<void> {
+  
+
+  async getAvailableCagesForTransfer(rackId: string, currentCageId: string): Promise<Cage[]> {
+    console.log('Getting available cages for transfer in rack:', rackId);
     try {
       const db = await this.getDB();
-      const id = await this.getNextId('animals');
+      const availableCages = db.tables.cages
+        .filter(cage => cage.rackId === rackId && cage.id !== currentCageId);
       
-      const newAnimal: Animal = {
-        ...animal,
-        id,
-        status: animal.status || 'active'
-      };
-
-      db.tables.animals.push(newAnimal);
-      await this.saveDB(db);
-      
-      console.log('Added animal successfully:', newAnimal);
+      console.log('Found available cages:', availableCages);
+      return availableCages;
     } catch (error) {
-      console.error('Error adding animal:', error);
-      throw error;
+      console.error('Error getting available cages:', error);
+      return [];
     }
   }
 
-  async getEventByCageId(cageId: string): Promise<Event | null> {
+  async getEventByCageId(cageId: any): Promise<Event | null> {
     try {
       const db = await this.getDB();
       
@@ -1197,63 +1074,123 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async getEventsForCage(cageId: string): Promise<Event[]> {
+  async createNewEventAfterTransfer(cageId: string, newType: CageType): Promise<void> {
     try {
       const db = await this.getDB();
-      return db.tables.events.filter(event => event.cageId === cageId);
-    } catch (error) {
-      console.error('Error getting events for cage:', error);
-      return [];
-    }
-  }
+      const eventId = generateId();
+      console.log('Creating new event:', eventId);
+      const newEvent : Event = {
+        id: eventId,
+        cageId: cageId,
+        type: newType,
+        startDate: new Date().toISOString().split('T')[0] ,
+        endDate: new Date().toISOString().split('T')[0] ,
+        notificationDate: '',
+        status: 'active',
+        completed: false,
+        title: '',
+        date: '',
+        rackId: undefined,
+        details: undefined };
 
-  async getActiveEventForCage(cageId: string): Promise<Event | null> {
-    try {
-      const db = await this.getDB();
-      return db.tables.events.find(event => 
-        event.cageId === cageId && 
-        event.status === 'active'
-      ) || null;
-    } catch (error) {
-      console.error('Error getting active event for cage:', error);
-      return null;
-    }
-  }
-
-  async updateCage(cageId: string, updateData: Partial<Cage>): Promise<void> {
-    console.log('=== START updateCage ===', { cageId, updateData });
-    try {
-      const db = await this.getDB();
-      
-      // Βρες το cage
+      if (!db.tables.events) {
+        db.tables.events = [];
+      }
       const cageIndex = db.tables.cages.findIndex(c => c.id === cageId);
       if (cageIndex === -1) {
-        throw new Error(`Cage not found with id: ${cageId}`);
+        throw new Error('Cage not found');
+      }
+      db.tables.cages[cageIndex].status = 'occupied';
+
+      db.tables.events.push(newEvent);
+console.log(db.tables.animals);
+      await this.saveDB(db);
+      console.log('Successfully updated cage Evennt');
+       } catch (error) {
+        console.error('Error updating Event in cage :', error);
+        throw error;
+      }
+    }
+
+    async updateanimalCageId(animalId: string, cageId: string): Promise<void> {
+      try {
+        const db = await this.getDB();
+        const animalIndex = db.tables.animals.findIndex(a => a.id === animalId);
+        if (animalIndex === -1) {
+          throw new Error('Animal not found');
+        }
+        db.tables.animals[animalIndex].cage_id = cageId;
+        await this.saveDB(db);
+        console.log('Animal cage ID updated successfully');
+      } catch (error) {
+        console.error('Error updating animal cage ID:', error);
+        throw error;
+      }
+    }
+
+
+  async updateCage(cageId: string, updateData: Partial<Cage>): Promise<void> {
+    console.log('=== START updateCage ===');
+    console.log('Updating cage:', cageId);
+    console.log('With data:', updateData);
+    
+    try {
+      const db = await this.getDB();
+      const cageIndex = db.tables.cages.findIndex(c => c.id === cageId);
+      
+      if (cageIndex === -1) {
+        throw new Error('Cage not found');
       }
 
-      const existingCage = db.tables.cages[cageIndex];
+      // Make sure animalIds is always an array
+      if (updateData.animalIds) {
+        updateData.animalIds = Array.isArray(updateData.animalIds) ? updateData.animalIds : [];
+      }
 
-      // Ενημέρωση του cage διατηρώντας τα υπάρχοντα δεδομένα
-      const updatedCage = {
-        ...existingCage,
-        ...updateData,
-        id: cageId, // Διατήρηση του αρχικού ID
-        animalIds: updateData.animalIds || existingCage.animalIds || [], // Διατήρηση ή ενημέρωση των animalIds
-        status: updateData.status || existingCage.status, // Διατήρηση ή ενημέρωση του status
-        type: updateData.type || existingCage.type // Διατήρηση ή ενημέρωση του type
+      // Update the cage
+      db.tables.cages[cageIndex] = {
+        ...db.tables.cages[cageIndex],
+        ...updateData
       };
 
-      // Ενημέρωση του cage στη βάση
-      db.tables.cages[cageIndex] = updatedCage;
-
       await this.saveDB(db);
-      console.log('Successfully updated cage:', updatedCage);
+      console.log('Updated cage:', db.tables.cages[cageIndex]);
     } catch (error) {
       console.error('Error updating cage:', error);
       throw error;
     }
     console.log('=== END updateCage ===');
   }
+
+  async updateCageType(cageId: string, newType: CageType): Promise<void> {
+    try {
+      const db = await this.getDB();
+      const eventIndex = db.tables.events.findIndex(e => e.cageId === cageId);
+      console.log(db.tables.events);
+      console.log('=== START updateCageType ===', { eventIndex, cageId, newType });
+      if (eventIndex !== -1) {
+        db.tables.events[eventIndex] = {
+          ...db.tables.events[eventIndex],
+          type: newType
+        };
+      }
+      const cageIndex = db.tables.cages.findIndex(c => c.id === cageId);
+      db.tables.cages[cageIndex] = {
+        ...db.tables.cages[cageIndex],
+        type: newType,
+        status: 'maintenance'
+      };
+      
+
+      await this.saveDB(db);
+      console.log('Successfully updated cage name');
+      if (cageIndex === -1) {
+        throw new Error(`Cage not found with id: ${cageId}`);
+      } } catch (error) {
+        console.error('Error updating cage name:', error);
+        throw error;
+      }
+    }
 
   async updateCageName(cageId: string, newName: string): Promise<void> {
     console.log('=== START updateCageName ===', { cageId, newName });
@@ -1279,27 +1216,7 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async updateCageStatus(cageId: string, status: 'empty' | 'occupied'): Promise<void> {
-    try {
-      const db = await this.getDB();
-      if (!db) throw new Error('Database not initialized');
-
-      const cageIndex = db.tables.cages.findIndex(c => c.id === cageId);
-      if (cageIndex === -1) throw new Error('Cage not found');
-
-      // Ενημέρωση μόνο του status
-      db.tables.cages[cageIndex] = {
-        ...db.tables.cages[cageIndex],
-        status
-      };
-
-      await this.saveDB(db);
-      console.log('Cage status updated successfully');
-    } catch (error) {
-      console.error('Error updating cage status:', error);
-      throw error;
-    }
-  }
+  
 
   // Προσθήκη της μεθόδου getNextPosition
   private async getNextPosition(): Promise<number> {
@@ -1377,7 +1294,7 @@ export class Database implements DatabaseInterface {
         return 1;
       }
 
-      // Βρίσκουμε την πρώτη διαθέσι��η θέση
+      // Βρίσκουμε την πρώτη διαθέσιμη θέση
       let position = 1;
       while (usedPositions.includes(position)) {
         position++;
@@ -1391,18 +1308,85 @@ export class Database implements DatabaseInterface {
     }
   }
 
-  async getExpiredEvents() {
+  async getUpcomingEvents(): Promise<Event[]> {
     try {
-      const now = new Date().toISOString();
-      return await this.db.all(`
-        SELECT * FROM events 
-        WHERE endDate <e ? 
-        AND completed = 0 
-        AND type IN ('breeding', 'expected_pregnancy', 'weaning')
-      `, [now]);
+      const db = await this.getDB();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const nextWeek = new Date(today);
+      nextWeek.setDate(nextWeek.getDate() + 7); // Επόμενες 7 μέρες
+      
+      // Get animal events from tables
+      const animalEvents = db.tables.events.filter(event => {
+        const eventDate = new Date(event.startDate);
+        return eventDate >= today && 
+               eventDate <= nextWeek && 
+               event.status !== 'completed' &&
+               (event.type === 'breeding' || 
+                event.type === 'expected_pregnancy' || 
+                event.type === 'weaning');
+      });
+
+      // Get general events
+      const generalEvents = db.tables.events.filter(event => {
+        const eventDate = new Date(event.startDate);
+        return eventDate >= today && 
+               eventDate <= nextWeek && 
+               event.type === 'general' && 
+               !event.completed;
+      });
+
+      // Combine all events
+      return [...animalEvents, ...generalEvents];
+    } catch (error) {
+      console.error('Error getting upcoming events:', error);
+      return [];
+    }
+  }
+
+  async getExpiredEvents(): Promise<Event[]> {
+    try {
+      const db = await this.getDB();
+      const now = new Date();
+      
+      // Get expired animal events
+      const expiredAnimalEvents = db.tables.events.filter(event => {
+        const endDate = new Date(event.endDate);
+        return endDate < now && 
+               !event.completed && 
+               (event.type === 'breeding' || 
+                event.type === 'expected_pregnancy' || 
+                event.type === 'weaning');
+      });
+
+      // Get expired general events
+      const expiredGeneralEvents = db.tables.events.filter(event => {
+        const endDate = new Date(event.endDate);
+        return endDate < now && 
+               !event.completed && 
+               event.type === 'general';
+      });
+
+      // Combine all expired events
+      return [...expiredAnimalEvents, ...expiredGeneralEvents];
     } catch (error) {
       console.error('Error getting expired events:', error);
-      throw error;
+      return [];
+    }
+  }
+
+  async getAnimal(animalId: string): Promise<Animal | null> {
+    console.log('Getting animal with ID:', animalId);
+    try {
+      const db = await this.getDB();
+      const animal = db.tables.animals.find(a => a.id === animalId);
+      
+      console.log('Found animal:', animal);
+      return animal || null;
+    } catch (error) {
+      console.error('Error getting animal:', error);
+      return null;
     }
   }
 }
@@ -1417,5 +1401,3 @@ interface DatabaseSchema {
 }
 
 export const database = Database.getInstance();
-
-export { Database };

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, Image  } from 'react-native';
 import { database } from '../../services/database';
-import { Animal, Cage } from '../../types';
+import { Animal, Cage, Rack
+ } from '../../types';
 import { Event } from '../../types';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
-import { testExpiredEventsNotification } from '../../services/notifications';
+// import { sendTestNotification } from '../../services/notifications';
 
 export default function ReportsScreen() {
   const [stats, setStats] = useState({ totalAnimals: 0, activeCages: 0 });
@@ -21,12 +22,37 @@ export default function ReportsScreen() {
   const [showAllPastGeneralEvents, setShowAllPastGeneralEvents] = useState(false);
   const [racks, setRacks] = useState<Rack[]>([]);
   const [cages, setCages] = useState<Cage[]>([]);
-
+  const [showAnimation, setShowAnimation] = useState(true);
+  const [selectedGif, setSelectedGif] = useState<number>(0);
+  
+  // Λίστα με τα διαθέσιμα GIFs
+  const gifs = [
+    require('../../assets/cat and mouse.gif'),
+    require('../../assets/bayron-smith-mickey-mouse.gif'),
+    require('../../assets/animated-mouse-image-0149.gif'),
+    require('../../assets/giphy.gif'),
+    require('../../assets/mouse.gif'),
+    require('../../assets/rat-eats-mm-rat.gif')
+  ];
 
   // Χρήση του useFocusEffect για ανανέωση κάθε φορά που η οθόνη έρχεται στο προσκήνιο
   useFocusEffect(
     useCallback(() => {
       loadData();
+      // Επίλεξε τυχαίο GIF
+    const randomIndex = Math.floor(Math.random() * gifs.length);
+    setSelectedGif(randomIndex);
+    setShowAnimation(true);
+    
+    // Κρύψε το animation μετά από 2 δευτερόλεπτα
+    const timer = setTimeout(() => {
+      setShowAnimation(false);
+    }, 2000);
+
+    loadData();
+    
+    return () => clearTimeout(timer);
+  
     }, [])
   );
 
@@ -63,15 +89,16 @@ export default function ReportsScreen() {
   // Φιλτράρισμα των events που δεν έχουν περάσει
   const futureEvents = events.filter(event => {
     const eventDate = new Date(event.endDate);
-    const reason = event.type === 'expected_pregnancy' ? 'Προγραμματισμένη Γέννα' : event.type === 'breeding' ? 'Γέννα' : 'Συντήρηση';
+    const reason = event.type === 'expected_pregnancy' ? 'Προγραμματισμένη Γέννα' : event.type === 'breeding' ? 'Ώρα για ζευγάρωμα' : 'Συντήρηση';
     const now = new Date();
-    return eventDate > now;
+    return (eventDate > now) && (event.type === 'breeding' || event.type ===
+      'expected_pregnancy' || event.type === 'weaning') ;
   });
   const futurebirthEvents = events.filter(event => {
     const eventDate = new Date(event.endDate);
-    const reason = event.type === 'expected_pregnancy' ? 'Προγραμματισμένη Γέννα' : event.type === 'breeding' ? 'Γέννα' : 'Συντήρηση';
+    const reason = event.type === 'expected_pregnancy' ? 'Προγραμματισμένη Γέννα' : event.type === 'breeding' ? 'Ώρα για ζευγάρωμα' : 'Συντήρηση';
     const now = new Date();
-    return (eventDate < now) && (reason === 'Προγραμματισμένη Γέννα' || reason === 'Γέννα');
+    return (eventDate < now) && (reason === 'Προγραμματισμένη Γέννα' || reason === 'Ώρα για ζευγάρωμα' || event.type === 'weaning');
   });
 
   const handleChangeTopregnand = async (event: Event) => {
@@ -80,16 +107,15 @@ export default function ReportsScreen() {
       const endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 21); // 21 μέρες για expected_pregnancy alla 8elw na vazei o xristis timi alla default 
 
-      const updatedEvent = {
-        ...event,
+      const eventUpdates: Partial<Event> = {...event,
         type: 'breeding',
         startDate: startDate.toISOString().split('T')[0],
         endDate: endDate.toISOString().split('T')[0],
-        notificationDate: endDate.toISOString().split('T')[0],
+        notificationId: endDate.toISOString().split('T')[0],
         completed: false
       };
 
-      await database.updateEvent(updatedEvent);
+      await database.updateEvent(event.id,eventUpdates);
       
       // Ανανέωση των δεδομένων
       loadData();
@@ -103,7 +129,7 @@ export default function ReportsScreen() {
 
   const handleOpenModal = (event: Event) => {
     setSelectedEvent(event);
-    setSelectedDays(21); // Default τιμή
+    setSelectedDays(25); // Default τιμή
     setIsModalVisible(true);
   };
 
@@ -114,12 +140,13 @@ export default function ReportsScreen() {
       const startDate = new Date();
       const endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + selectedDays);
-  
-      const eventUpdates = {
-        type: 'expected_pregnancy',
+     const newType = selectedEvent.type === 'breeding' ? 'expected_pregnancy' : 'weaning';
+      
+      const eventUpdates: Partial<Event> = {
+       type: newType,
         startDate: startDate.toISOString().split('T')[0],
         endDate: endDate.toISOString().split('T')[0],
-        notificationDate: endDate.toISOString().split('T')[0],
+        notificationId: endDate.toISOString().split('T')[0],
         completed: false
       };
   
@@ -144,11 +171,11 @@ export default function ReportsScreen() {
       const startDate = new Date();
       const endDate = new Date(startDate);
 
-      const eventUpdates = {
+      const eventUpdates: Partial<Event> = {
         type: 'maintenance',
         startDate: startDate.toISOString().split('T')[0],
         endDate: endDate.toISOString().split('T')[0],
-        notificationDate: endDate.toISOString().split('T')[0],
+        notificationId: endDate.toISOString().split('T')[0],
         completed: false
       };
 
@@ -165,7 +192,7 @@ export default function ReportsScreen() {
   const generalEvents = events.filter(event => {
     const eventDate = new Date(event.endDate);
     const now = new Date();
-    return event.type === 'general' && !event.completed;
+    return event.type === 'general' && !event.completed && eventDate > now;
   });
 
   // Προσθήκη νέου φίλτρου για completed general events
@@ -193,11 +220,24 @@ export default function ReportsScreen() {
   };
 
   const handleTestNotification = async () => {
-    await testExpiredEventsNotification();
+    // await  sendTestNotification();
     Alert.alert('Test', 'Η ειδοποίηση θα εμφανιστεί σε 30 δευτερόλεπτα');
   };
 
   return (
+    <View style={styles.container}>
+
+    {showAnimation ? (
+
+      <View style={styles.animationContainer}>
+        <Image
+          source={gifs[selectedGif]}
+          style={styles.animation}
+          resizeMode="contain"
+        />
+      </View>
+    ) : (
+  
     <ScrollView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Αναφορές</Text>
@@ -215,12 +255,12 @@ export default function ReportsScreen() {
             <Text style={styles.statLabel}>Ενεργά Κλουβιά</Text>
           </View>
         </View>
-        <TouchableOpacity 
+        {/* <TouchableOpacity 
                       style={[styles.actionButton, { backgroundColor: '#10b981' }]}
                       onPress={handleTestNotification}
                     >
                       <Text style={styles.actionButtonText}>Test Notification</Text>
-                    </TouchableOpacity>
+                    </TouchableOpacity> */}
 
         {/* Events Section */}
         <View style={styles.section}>
@@ -243,8 +283,8 @@ export default function ReportsScreen() {
                       }
                     ]}>
                       <Text style={styles.eventTypeText}>
-                        {event.type === 'expected_pregnancy' ? 'Αναμονή' : 
-                         event.type === 'breeding' ? 'Γέννα' : 
+                        {event.type === 'expected_pregnancy' ? ' Προγραμματισμένη Γέννα' : 
+                         event.type === 'breeding' ? 'Ώρα για ζευγάρωμα' : 
                          event.type === 'weaning' ? 'Απογαλακτισμός' : 
                          'Συντήρηση'}
                       </Text>
@@ -307,8 +347,9 @@ export default function ReportsScreen() {
                   <View style={styles.eventHeader}>
                     <View style={[styles.eventTypeTag, { backgroundColor: '#818cf8' }]}>
                       <Text style={styles.eventTypeText}>
-                        {event.type === 'expected_pregnancy' ? 'Αναμονή' : 'Γέννα'}
-                      </Text>
+                      {event.type === 'expected_pregnancy' ? ' Προγραμματισμένη Γέννα' : 
+                         event.type === 'breeding' ? 'Ώρα για ζευγάρωμα' :  'Απογαλακτισμός'}    
+                         </Text>
                     </View>
                   </View>
 
@@ -334,10 +375,18 @@ export default function ReportsScreen() {
                         style={styles.actionButton}
                         onPress={() => handleOpenModalForPregnancy(event)}
                       >
-                        <Text style={styles.actionButtonText}>Αλλαγή σε Αναμονή</Text>
+                        <Text style={styles.actionButtonText}>Αλλαγή σε Προγραμματισμένη Γέννα</Text>
                       </TouchableOpacity>
                     )}
                     {event.type === 'expected_pregnancy' && (
+                      <TouchableOpacity 
+                        style={[styles.actionButton, { backgroundColor: '#0891b2' }]}
+                        onPress={() => handleOpenModal(event)}
+                      >
+                        <Text style={styles.actionButtonText}>Αλλαγή σε Απογαλακτισμός</Text>
+                      </TouchableOpacity>
+                    )}
+                    {event.type === 'weaning' && (
                       <TouchableOpacity 
                         style={[styles.actionButton, { backgroundColor: '#0891b2' }]}
                         onPress={() => handleChangeToMaintenance(event)}
@@ -468,13 +517,44 @@ export default function ReportsScreen() {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Επιλογή Ημερών</Text>
-            <TextInput
-              style={styles.daysInput}
-              keyboardType="numeric"
-              value={selectedDays.toString()}
-              onChangeText={(text) => setSelectedDays(parseInt(text) || 21)}
-              placeholder="Αριθμός ημερών"
-            />
+            <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 15}}>
+              <TouchableOpacity 
+                style={{
+                  width: 40,
+                  height: 40,
+                  backgroundColor: '#818cf8',
+                  borderRadius: 20,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginHorizontal: 15
+                }}
+                onPress={() => setSelectedDays(prev => Math.max(1, prev - 1))}
+              >
+                <Text style={{color: 'white', fontSize: 24, fontWeight: 'bold'}}>-</Text>
+              </TouchableOpacity>
+              
+              <Text style={{
+                fontSize: 18,
+                fontWeight: '500',
+                minWidth: 100,
+                textAlign: 'center'
+              }}>{selectedDays} ημέρες</Text>
+              
+              <TouchableOpacity 
+                style={{
+                  width: 40,
+                  height: 40,
+                  backgroundColor: '#818cf8',
+                  borderRadius: 20,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginHorizontal: 15
+                }}
+                onPress={() => setSelectedDays(prev => Math.min(50, prev + 1))}
+              >
+                <Text style={{color: 'white', fontSize: 24, fontWeight: 'bold'}}>+</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={styles.modalText}>
               Ημερομηνία λήξης: {formatDate(new Date(Date.now() + selectedDays * 24 * 60 * 60 * 1000))}
             </Text>
@@ -496,8 +576,8 @@ export default function ReportsScreen() {
         </View>
       </Modal>
     </ScrollView>
-  );
-}
+ )}
+  </View>)};
 
 const styles = StyleSheet.create({
   container: {
@@ -730,5 +810,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
     fontWeight: '500',
+  },
+  animationContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    zIndex: 1000,
+  },
+  animation: {
+    width: 300,
+    height: 300,
   },
 }); 

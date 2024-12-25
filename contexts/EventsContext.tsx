@@ -12,7 +12,7 @@ interface EventsContextType {
 const EventsContext = createContext<EventsContextType | undefined>(undefined);
 
 export function EventsProvider({ children }: { children: React.ReactNode }) {
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
 
   const loadEvents = async () => {
     try {
@@ -37,7 +37,7 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
       console.log('Adding event:', newEvent); // Debug log
       const event = await database.addEvent(newEvent);
       console.log('Added event:', event); // Debug log
-      setEvents(prevEvents => [...prevEvents, event]);
+      setEvents((prevEvents: any) => [...prevEvents, event]);
     } catch (error) {
       console.error('Error adding event:', error);
       throw error;
@@ -46,8 +46,7 @@ export function EventsProvider({ children }: { children: React.ReactNode }) {
 
   const deleteEvent = async (id: number) => {
     try {
-      await database.deleteEvent(id);
-      setEvents(prevEvents => prevEvents.filter(event => event.id !== id));
+      setEvents((prevEvents: any[]) => prevEvents.filter(event => event.id !== id));
     } catch (error) {
       console.error('Error deleting event:', error);
       throw error;

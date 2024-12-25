@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, ScrollView, Modal, TextInput, Alert } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Animal, Cage, CageType, Event } from '../../types';
+import { Animal, Cage, CageType, Event, CageStatus } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { database } from '../../services/database';
@@ -13,7 +11,7 @@ interface EditAnimalModalProps {
   onClose: () => void;
   onUpdate: () => void;
   selectedAnimals: Animal[];
-  mode: 'preview' | 'addExtra';
+  mode: 'preview' | 'addExtra' | 'add';
 }
 
 export default function EditAnimalModal({ 
@@ -36,6 +34,11 @@ export default function EditAnimalModal({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [cageName, setCageName] = useState(cage.notes || '');
   const [isEditing, setIsEditing] = useState(false);
+
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [selectedAnimalForTransfer, setSelectedAnimalForTransfer] = useState<string | null>(null);
+  const [targetCageId, setTargetCageId] = useState<string>('');
+  const [availableCagesWithRackNames, setAvailableCagesWithRackNames] = useState<(Cage & { rackName: string })[]>([]);
 
   useEffect(() => {
     console.log('=== START Loading Animals for Cage ===');
@@ -80,7 +83,9 @@ export default function EditAnimalModal({
       console.error('Error loading event:', error);
     }
   };
-
+  function generateId(): string {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  }
   // Handler για προσθήκη νέου ζώου
   const handleAddAnimal = async () => {
     if (!newAnimal.species || !newAnimal.strain) {
@@ -89,9 +94,8 @@ export default function EditAnimalModal({
     }
 
     try {
-      const newAnimalId = Date.now().toString();
       const animal: Animal = {
-        id: newAnimalId,
+        id: generateId(),
         species: newAnimal.species,
         strain: newAnimal.strain,
         sex: newAnimal.sex || 'male',
@@ -104,9 +108,9 @@ export default function EditAnimalModal({
       
       const updatedCage = {
         ...cage,
-        animalIds: [...(cage.animalIds || []), newAnimalId],
+        animalIds: [...(cage.animalIds || []), animal.id],
         status: 'occupied'
-      };
+      } ;
       
       await database.updateCage(cage.id, updatedCage);
       
@@ -150,7 +154,7 @@ export default function EditAnimalModal({
     
  
   // Handler για διαγραφή ζώου
-  const handleDeleteAnimal = async (animalId: number) => {
+  const handleDeleteAnimal = async (animalId: string) => {
     console.log('=== START handleDeleteAnimal ===');
     console.log('Deleting animal:', animalId);
     console.log('Current cage:', cage);
@@ -239,8 +243,8 @@ export default function EditAnimalModal({
     const [eventDays, setEventDays] = useState(() => {
       // Default days based on current type
       switch (cage.type) {
-        case 'breeding': return 3;
         case 'expected_pregnancy': return 21;
+        case 'breeding': return 3;
         case 'weaning': return 21;
         case 'maintenance': return 0;
         default: return 0;
@@ -259,7 +263,7 @@ export default function EditAnimalModal({
       return diffDays;
     };
 
-    const remainingDays = calculateRemainingDays();
+    const remainingDays = calculateRemainingDays() || 0;
     
     // Υπολογισμός προόδου
     const calculateProgress = () => {
@@ -275,7 +279,7 @@ export default function EditAnimalModal({
       return Math.min(Math.max(0, passedDays), totalDays);
     };
 
-    const progress = calculateProgress();
+    const progress = calculateProgress() ||0;
 
     const handleTypeSelect = (newType: CageType) => {
       setSelectedType(newType);
@@ -302,7 +306,7 @@ export default function EditAnimalModal({
         const startDate = new Date();
         const endDate = new Date(Date.now() + eventDays * 24 * 60 * 60 * 1000);
         
-        const updateData = {
+        const updateData: any = {
           type: selectedType,
           notes: cageName,
           event: {
@@ -392,12 +396,20 @@ export default function EditAnimalModal({
                         Γέννηση: {isNaN(birthDate.getTime()) ? 'Άγνωστη' : format(birthDate, 'dd/MM/yyyy')}
                       </Text>
                     </View>
-                    <TouchableOpacity 
-                      style={styles.deleteButton}
-                      onPress={() => handleDeleteAnimal(animal.id)}
-                    >
-                      <Ionicons name="trash-outline" size={20}  />
-                    </TouchableOpacity>
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity 
+                        style={[styles.actionButton, { backgroundColor: '#3b82f6' }]}
+                        onPress={() => handleTransferAnimal(animal)}
+                      >
+                        <Ionicons name="arrow-forward-circle-outline" size={20} color="white" />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.actionButton, { backgroundColor: '#ef4444' }]}
+                        onPress={() => handleDeleteAnimal(animal.id)}
+                      >
+                        <Ionicons name="trash-outline" size={20} color="white" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 );
               })}
@@ -419,11 +431,10 @@ export default function EditAnimalModal({
           {!isEditing ? (
             <View style={styles.currentStatus}>
               <Text style={styles.statusType}>
-                {cage.type === 'breeding' ? 'Γέννα' :
-                 cage.type === 'expected_pregnancy' ? 'Αναμονή' :
+                {cage.type === 'breeding' ? 'Ώρα για ζευγάρωμα' :
+                 cage.type === 'expected_pregnancy' ? 'Προγραμματισμένη Γέννα' :
                  cage.type === 'weaning' ? 'Απογαλακτισμός' : 'Συντήρηση'}
               </Text>
-              
               {event && cage.type !== 'maintenance' && (
                 <>
                   <View style={styles.progressBar}>
@@ -434,7 +445,6 @@ export default function EditAnimalModal({
                       ]} 
                     />
                   </View>
-                  
                   <View style={styles.eventDetails}>
                     <Text style={styles.eventDate}>
                       Έναρξη: {format(new Date(event.startDate), 'dd/MM/yyyy')}
@@ -443,20 +453,15 @@ export default function EditAnimalModal({
                       Λήξη: {format(new Date(event.endDate), 'dd/MM/yyyy')}
                     </Text>
                   </View>
-
-                  <Text style={[
-                    styles.remainingDays,
-                    remainingDays <= 3 && styles.urgentDays
-                  ]}>
+                  <Text style={[styles.remainingDays, remainingDays <= 3 && styles.urgentDays]}>
                     {remainingDays > 0 
-                      ? `Απομένουν ${remainingDays} ${remainingDays === 1 ? 'μέρα' : 'μέρες'}`
-                      : remainingDays === 0
-                        ? 'Ολοκληρώνεται σήμερα!'
+                      ? `Απομένουν ${remainingDays} ${remainingDays === 1 ? 'μέρα' : 'μέρες'}` 
+                      : remainingDays === 0 
+                        ? 'Ολοκληρώνεται σήμερα!' 
                         : 'Έχει ολοκηρωθεί'}
                   </Text>
-
                   <Text style={styles.progressText}>
-                    Πρόοδος: {progress} από {remainingDays} μέρες
+                    Πρόοδος: {progress} από {eventDays} μέρες
                   </Text>
                 </>
               )}
@@ -649,8 +654,9 @@ export default function EditAnimalModal({
           <Text style={styles.sectionTitle}>Στοιχεία Event</Text>
           <View style={styles.eventDetails}>
             <Text style={styles.eventType}>
-              {event.type === 'breeding' ? 'Γέννα' :
+              {
                event.type === 'expected_pregnancy' ? 'Αναμονή' :
+               event.type === 'breeding' ? 'Γέννα' :
                event.type === 'weaning' ? 'Απογαλακτισμός' : 'Συντήρηση'}
             </Text>
             <Text style={styles.eventDate}>Έναρξη: {event.startDate}</Text>
@@ -682,6 +688,79 @@ export default function EditAnimalModal({
       console.error('Error updating cage name:', error);
       Alert.alert('Σφάλμα', 'Δεν ήταν δυνατή η αποθήκευση του ονόματος');
     }
+  };
+  const handleTransferAnimal = async (animalId: Animal) => {
+    console.log('=== START handleTransferAnimal ===');
+    console.log('Transferring animal with ID:', animalId);
+    
+    try {
+      // Load available cages before showing the modal
+      const availableCagesForTransfer = await database.getAvailableCagesForTransfer(cage.rackId, cage.id);
+      
+      // Get rack names for each cage
+      const cagesWithRackNames = await Promise.all(
+        availableCagesForTransfer.map(async (cage) => {
+          const rack = await database.getRackById(cage.rackId);
+          return {
+            ...cage,
+            rackName: rack?.name || 'Άγνωστο Rack'
+          };
+        })
+      );
+      setAvailableCagesWithRackNames(cagesWithRackNames);
+      setSelectedAnimalForTransfer(animalId);
+      setShowTransferModal(true);
+    } catch (error) {
+      console.error('Error loading available cages:', error);
+      Alert.alert('Σφάλμα', 'Δεν ήταν δυνατή η φόρτωση των διαθέσιμων κλουβιών');
+    }
+  };
+
+  const executeTransfer = async () => {
+    console.log('=== START executeTransfer ===');
+    if (!selectedAnimalForTransfer || !targetCageId) {
+      Alert.alert('Σφάλμα', 'Παρακαλώ επιλέξτε κλουβί προορισμού');
+      return;
+    }
+
+    try {
+      console.log('Selected animal :', selectedAnimalForTransfer);
+      console.log('Current cage :', cage); 
+      console.log('Target cage ID:', targetCageId);
+      
+   
+
+      // Get the animal to verify it exists
+      const animal = await database.getAnimal(selectedAnimalForTransfer.id);
+      if (!animal) {
+        throw new Error('Animal not found in database');
+      }
+      console.log('Animal to transfer:', animal);
+      const count = await database.getAnimalCountForCage(cage.id);
+      if (count === 1) { 
+        await database.updateCageType(cage.id, 'maintenance');
+       }
+       const countOfTargetAnimalCage = await database.getAnimalCountForCage(targetCageId);
+       if (countOfTargetAnimalCage === 0) { 
+        console.log('Count of target animal cage:', targetCageId);
+        await database.createNewEventAfterTransfer(targetCageId, 'maintenance');
+       }
+       await database.updateanimalCageId(selectedAnimalForTransfer.id, targetCageId);
+
+  
+
+        setShowTransferModal(false);
+        setSelectedAnimalForTransfer(null);
+        setTargetCageId('');
+        onUpdate();
+        onClose();
+        Alert.alert('Επιτυχία', 'Το ζώο μεταφέρθηκε επιτυχώς');
+      // }
+    } catch (error) {
+      console.error('Error transferring animal:', error);
+      Alert.alert('Σφάλμα', 'Δεν ήταν δυνατή η μεταφορά του ζώου');
+    }
+    console.log('=== END executeTransfer ===');
   };
 
   const handleUpdateCage = async (updateData: Partial<Cage>) => {
@@ -724,6 +803,57 @@ export default function EditAnimalModal({
             <Text style={styles.buttonText}>Κλείσιμο</Text>
           </TouchableOpacity>
         </View>
+        {/* Transfer Modal */}
+        <Modal
+          visible={showTransferModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowTransferModal(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Επιλέξτε κλουβί για μεταφορά</Text>
+              
+              <ScrollView style={styles.cageList}>
+                {availableCagesWithRackNames.map((cage) => (
+                  <TouchableOpacity
+                    key={cage.id}
+                    style={[
+                      styles.cageItem,
+                      targetCageId === cage.id && styles.selectedCage
+                    ]}
+                    onPress={() => setTargetCageId(cage.id)}
+                  >
+                    <Text style={styles.cageText}>
+                      Rack: {cage.rackName}{'\n'}
+                      Κλουβί: 
+                      {cage.position ? ` (${cage.position})` : ` (${cage.notes})`} {cage.notes?`όνομα ${cage.notes}`:''}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={() => {
+                    setShowTransferModal(false);
+                    setTargetCageId('');
+                  }}
+                >
+                  <Text style={styles.buttonText}>Ακύρωση</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.confirmButton]}
+                  onPress={executeTransfer}
+                  disabled={!targetCageId}
+                >
+                  <Text style={styles.buttonText}>Μεταφορά</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </Modal>
   );
@@ -781,9 +911,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
   },
-  deleteButton: {
-    padding: 8,
-  },
   eventDetails: {
     backgroundColor: '#f8f9fa',
     padding: 16,
@@ -808,11 +935,6 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
   },
   input: {
     borderWidth: 1,
@@ -847,19 +969,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
     marginTop: 16,
-  },
-  footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  footerButton: {
-    padding: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#6c757d',
   },
   buttonText: {
     color: 'white',
@@ -951,9 +1060,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-  editButton: {
-    padding: 8,
-  },
   editActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -964,9 +1070,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 6,
-  },
-  saveButton: {
-    backgroundColor: '#4caf50',
   },
   selectedTypeButtonText: {
     color: 'white',
@@ -988,6 +1091,7 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     backgroundColor: '#dc3545',
+    padding: 8,
   },
   saveButton: {
     backgroundColor: '#28a745',
@@ -995,21 +1099,11 @@ const styles = StyleSheet.create({
   cancelButton: {
     backgroundColor: '#6c757d',
   },
-  buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
   dateButton: {
     backgroundColor: '#f0f0f0',
     padding: 12,
     borderRadius: 8,
     marginTop: 4,
-  },
-  dateButtonText: {
-    fontSize: 16,
-    color: '#333',
-    textAlign: 'center',
   },
   label: {
     fontSize: 16,
@@ -1050,21 +1144,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  nameInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-  },
-  saveNameButton: {
-    backgroundColor: '#4CAF50',
-    padding: 12,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   saveNameButtonText: {
     color: 'white',
     fontWeight: 'bold',
@@ -1088,13 +1167,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 8,
   },
-  
-  nameInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  
   nameInput: {
     flex: 1,
     borderWidth: 1,
@@ -1123,5 +1195,64 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     backgroundColor: '#e8f5e9',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  cageList: {
+    maxHeight: 300,
+  },
+  cageItem: {
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: '#f8f9fa',
+    marginBottom: 8,
+  },
+  selectedCage: {
+    backgroundColor: '#e0f2fe',
+    borderColor: '#3b82f6',
+    borderWidth: 1,
+  },
+  cageText: {
+    fontSize: 16,
+    color: '#2c3e50',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    gap: 12,
+  },
+  button: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  confirmButton: {
+    backgroundColor: '#3b82f6',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginLeft: 8,
   }
 });
